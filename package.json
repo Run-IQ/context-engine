@@ -1,0 +1,81 @@
+{
+  "name": "@run-iq/context-engine",
+  "version": "1.0.0",
+  "description": "Shared execution context container, persistence contracts, and in-memory adapters for Run-IQ",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./adapters": {
+      "import": {
+        "types": "./dist/adapters/index.d.ts",
+        "default": "./dist/adapters/index.js"
+      },
+      "require": {
+        "types": "./dist/adapters/index.d.cts",
+        "default": "./dist/adapters/index.cjs"
+      }
+    },
+    "./stores": {
+      "import": {
+        "types": "./dist/stores/index.d.ts",
+        "default": "./dist/stores/index.js"
+      },
+      "require": {
+        "types": "./dist/stores/index.d.cts",
+        "default": "./dist/stores/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/ tests/ && prettier --check src/ tests/",
+    "lint:fix": "eslint src/ tests/ --fix && prettier --write src/ tests/"
+  },
+  "keywords": [
+    "context-engine",
+    "evaluation-context",
+    "persistence",
+    "run-iq"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Run-IQ/context-engine.git"
+  },
+  "homepage": "https://github.com/Run-IQ/context-engine#readme",
+  "bugs": {
+    "url": "https://github.com/Run-IQ/context-engine/issues"
+  },
+  "author": "Abdou-Raouf ATARMLA",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vitest/coverage-v8": "^1.6.1",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.3.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
