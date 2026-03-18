@@ -164,8 +164,8 @@ describe('EvaluationContext.set() — edge cases', () => {
   // ─── Limits boundary values ────────────────────────────────────────────────
 
   it('allows value exactly at maxValueSizeKb', () => {
-    // A string of length ~1024 → ~1kb in JSON
-    const str = 'x'.repeat(1020); // ~1.0kb after JSON.stringify adds quotes
+    // A string of length 512 → 512 * 2 = 1024 bytes = 1kb
+    const str = 'x'.repeat(512);
     const ctx = new EvaluationContext({}, meta, {
       limits: { maxValueSizeKb: 1.1 },
     });

@@ -59,17 +59,20 @@ describe('roughSizeKb', () => {
     expect(size).toBeGreaterThan(0);
   });
 
-  it('returns Infinity for circular references', () => {
+  it('handles circular references without throwing', () => {
     const obj: Record<string, unknown> = { a: 1 };
     obj['self'] = obj;
-    expect(roughSizeKb(obj)).toBe(Infinity);
+    // Recursive estimator uses WeakSet to handle cycles — returns finite size
+    const size = roughSizeKb(obj);
+    expect(size).toBeGreaterThan(0);
+    expect(Number.isFinite(size)).toBe(true);
   });
 
-  it('estimates based on JSON.stringify length', () => {
+  it('estimates string size based on UTF-16 byte count', () => {
     const data = 'x'.repeat(1024);
     const size = roughSizeKb(data);
-    // JSON.stringify adds quotes: '"xxx..."' = 1024 + 2 chars
-    expect(size).toBeCloseTo(1.002, 1);
+    // 1024 chars × 2 bytes = 2048 bytes = 2kb
+    expect(size).toBeCloseTo(2, 0);
   });
 });
 

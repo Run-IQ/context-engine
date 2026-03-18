@@ -55,15 +55,18 @@ describe('EvaluationContext.set()', () => {
     expect(ctx.get('node.port')).toBe(1);
   });
 
-  it('freezes the value — external mutation does not affect state', () => {
+  it('freezes the stored copy — external mutation does not affect state', () => {
     const ctx = new EvaluationContext({}, meta);
     const arr = [1, 2, 3];
     ctx.set('node', 'data', arr);
-    expect(() => {
-      arr.push(4);
-    }).toThrow();
+    // The original array is NOT frozen (cloneAndFreeze creates a separate copy)
+    arr.push(4);
+    expect(arr).toEqual([1, 2, 3, 4]);
+    // But the stored value is an independent frozen clone
     const stored = ctx.get('node.data') as number[];
     expect(stored).toEqual([1, 2, 3]);
+    expect(Object.isFrozen(stored)).toBe(true);
+    expect(() => stored.push(5)).toThrow();
   });
 
   it('checks limits BEFORE writing — state unchanged on error', () => {

@@ -10,10 +10,10 @@ describe('EvaluationContext metrics', () => {
     expect(ctx.sizeKb()).toBeGreaterThan(0);
   });
 
-  it('sizeKb() returns 0-ish for empty context (just braces)', () => {
+  it('sizeKb() returns small value for empty context', () => {
     const ctx = new EvaluationContext({}, meta);
-    // empty map → "{}" → 2 chars → ~0.002 kb
-    expect(ctx.sizeKb()).toBeLessThan(0.01);
+    // empty map → object overhead only → ~16 bytes → ~0.016 kb
+    expect(ctx.sizeKb()).toBeLessThan(0.05);
   });
 
   it('sizeKb() grows as entries are added', () => {
