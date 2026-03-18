@@ -1,6 +1,6 @@
 {
   "name": "@run-iq/context-engine",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Shared execution context container, persistence contracts, and in-memory adapters for Run-IQ",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -64,7 +64,10 @@
     "url": "https://github.com/Run-IQ/context-engine/issues"
   },
   "author": "Abdou-Raouf ATARMLA",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
