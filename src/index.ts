@@ -57,7 +57,14 @@ export {
 } from './errors.js';
 
 // Utilities
-export { deepFreeze, roughSizeKb, sha256, getNestedValue } from './utils.js';
+export {
+  deepFreeze,
+  cloneAndFreeze,
+  safeClone,
+  roughSizeKb,
+  sha256,
+  getNestedValue,
+} from './utils.js';
 
 // InMemory adapters
 export {

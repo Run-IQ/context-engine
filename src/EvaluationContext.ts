@@ -2,7 +2,7 @@ import type { ExecutionMeta } from './types/meta.js';
 import type { EvaluationContextOptions } from './types/options.js';
 import type { ContextSnapshot } from './types/snapshot.js';
 import { ContextConflictError, ContextLimitError, ContextValidationError } from './errors.js';
-import { deepFreeze, roughSizeKb, getNestedValue } from './utils.js';
+import { deepFreeze, cloneAndFreeze, roughSizeKb, getNestedValue } from './utils.js';
 
 const RESERVED_NAMESPACES = new Set(['input', '__internal', '__meta']);
 const IDENTIFIER_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -21,7 +21,7 @@ export class EvaluationContext {
     this.frozenInput = Object.freeze({ ...input });
 
     for (const [key, value] of Object.entries(input)) {
-      this.state.set(`input.${key}`, deepFreeze(value));
+      this.state.set(`input.${key}`, cloneAndFreeze(value));
     }
   }
 
@@ -54,7 +54,7 @@ export class EvaluationContext {
     this.checkSizeLimits(value, key);
 
     this.options.hooks?.beforeSet?.(nodeId, portName, value);
-    this.state.set(key, deepFreeze(value));
+    this.state.set(key, cloneAndFreeze(value));
     this.options.hooks?.afterSet?.(nodeId, portName, value);
   }
 
@@ -68,7 +68,7 @@ export class EvaluationContext {
       );
     }
 
-    this.state.set(`${nodeId}.__raw`, deepFreeze(raw));
+    this.state.set(`${nodeId}.__raw`, cloneAndFreeze(raw));
   }
 
   get(key: string): unknown {
