@@ -77,3 +77,4 @@ export {
   InMemoryExecutionStore,
   createInMemoryAdapter,
 } from './adapters/index.js';
+export { VERSION } from './version.js';
