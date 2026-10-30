@@ -1,12 +1,8 @@
 # @run-iq/context-engine
 
-Shared execution context, persistence contracts, and in-memory adapters for the Run-IQ ecosystem.
+The shared state and storage contracts for Run-IQ. It provides `EvaluationContext`, an append-only store for the values produced during one execution, and the interfaces (`RuleStore`, `GraphStore`, `ExecutionStore`) that a host implements to plug in its own database.
 
-## What it does
-
-Context Engine is the **state backbone** of Run-IQ. Every evaluation — whether a single rule calculation or a multi-graph orchestration — runs inside an `EvaluationContext` that tracks inputs, outputs, metadata, and lifecycle events.
-
-It also defines the **persistence contracts** (store interfaces) that hosts implement to plug in their own database.
+It is used by [`@run-iq/dg`](https://github.com/Run-IQ/decision-graph), whose nodes read and write their outputs through the context, and by [`@run-iq/rule-registry`](https://github.com/Run-IQ/rule-registry), which manages rules on top of a `RuleStore`. In-memory implementations of every store are included for tests and prototypes.
 
 ## Install
 
@@ -14,92 +10,83 @@ It also defines the **persistence contracts** (store interfaces) that hosts impl
 npm install @run-iq/context-engine
 ```
 
-## Core concepts
+Requires Node.js 20 or later.
 
-### EvaluationContext
+## Example
 
-Immutable execution container. Holds input data, metadata, and accumulated state. Supports snapshots, limits, and lifecycle hooks.
-
-```typescript
+```ts
 import { EvaluationContext } from '@run-iq/context-engine';
 
 const ctx = new EvaluationContext(
-  { income: 5_000_000, taxType: 'IRPP' },       // input data
-  { requestId: 'req-1', tenantId: 't-1', timestamp: new Date().toISOString() },
-  { limits: { maxStateSizeKb: 512 } },
+  { orderTotal: 200 },
+  { requestId: 'order-42', tenantId: 'acme', timestamp: new Date().toISOString() },
+  { limits: { maxTotalSizeKb: 512 } },
 );
 
-ctx.set('irpp', 425_000);
-ctx.get('irpp');               // 425000
-ctx.snapshot('after-irpp');    // frozen point-in-time copy
+ctx.get('input.orderTotal');    // 200
+ctx.set('shipping', 'fee', 10); // stored under "shipping.fee"
+ctx.get('shipping.fee');        // 10
+ctx.getNodeOutputs('shipping'); // { fee: 10 }
+ctx.snapshot('after-shipping'); // frozen copy of the current state
+
+ctx.set('shipping', 'fee', 12); // throws ContextConflictError
 ```
 
-### Persistence contracts
+## EvaluationContext
 
-Context Engine defines store interfaces — the host provides implementations.
+- Input values are frozen and readable under `input.<key>`.
+- `set(nodeId, portName, value)` writes `nodeId.portName`. Each key can be written once; writing it again throws `ContextConflictError`. Identifiers must match `/^[a-zA-Z0-9_-]+$/`, and `input`, `__internal` and `__meta` are reserved.
+- Stored values are deep-cloned and frozen, so they cannot be changed after the fact.
+- `setRaw(nodeId, raw)` keeps a node's raw output. Its fields can be read with `get('nodeId.__raw.some.path')`.
+- `snapshot(label?)` records the full state; `getSnapshots()` returns all of them.
+- `getFullState()`, `has(key)`, `sizeKb()` and `entryCount()` inspect the context.
 
-| Interface | Purpose |
+Options passed as the third argument:
+
+| Option | |
 |---|---|
-| `RuleStore` | CRUD + versioning + audit for rules |
-| `GraphStore` | Storage for decision graph definitions |
-| `ExecutionStore` | Execution history and event log |
-| `PersistenceAdapter` | Bundles all three stores |
+| `limits.maxValueSizeKb` | Maximum size of one value |
+| `limits.maxTotalSizeKb` | Maximum size of the whole context |
+| `limits.maxEntries` | Maximum number of keys |
+| `limits.allowRawOverwrite` | Set to `false` to make `setRaw` append-only too |
+| `hooks` | `beforeSet`, `afterSet`, `beforeGet`, `afterGet`, `onError` |
 
-```typescript
-import type { RuleStore, PersistenceAdapter } from '@run-iq/context-engine';
+Exceeding a limit throws `ContextLimitError`. No limit is applied by default.
 
-// Host implements against their database
-class PostgresRuleStore implements RuleStore {
-  async getRule(id, version?) { /* SELECT FROM rules ... */ }
-  async saveRule(rule)        { /* INSERT INTO rules ... */ }
-  // ...
-}
+## Storage contracts
 
-// Bundle into adapter
-const adapter: PersistenceAdapter = {
-  rules: new PostgresRuleStore(db),
-  graphs: new PostgresGraphStore(db),
-  executions: new PostgresExecutionStore(db),
-};
-```
+| Interface | Stores |
+|---|---|
+| `RuleStore` | Versioned rules, their status (`draft`, `review`, `published`, `deprecated`, `archived`), audit trail and conflict detection |
+| `GraphStore` | Decision graph definitions and their compiled form |
+| `ExecutionStore` | Execution records, events, snapshots and summaries |
+| `PersistenceAdapter` | `{ rules?, graphs?, executions? }` |
 
-### In-memory adapters (testing)
+To use your own database, implement these interfaces. For tests, `createInMemoryAdapter()` returns an adapter backed by `InMemoryRuleStore`, `InMemoryGraphStore` and `InMemoryExecutionStore` (also available from `@run-iq/context-engine/adapters`).
 
-```typescript
+```ts
 import { createInMemoryAdapter } from '@run-iq/context-engine';
 
-const adapter = createInMemoryAdapter();
-// Ready to use — no database required
+const { rules } = createInMemoryAdapter();
+
+const rule = await rules.saveRule({
+  id: 'shipping-fee',
+  model: 'PERCENTAGE',
+  tenantId: 'acme',
+  scope: 'tenant-specific',
+  effectiveFrom: '2025-01-01',
+  payload: JSON.stringify({ params: { base: 'orderTotal', rate: 0.05 } }),
+  createdBy: 'alice',
+});
+await rules.updateRuleStatus('shipping-fee', rule.version, 'review', 'alice');
+await rules.publishRule('shipping-fee', rule.version, 'bob');
+
+await rules.resolveRules({ tenantId: 'acme', effectiveDate: '2025-06-01' });
+// [{ id: 'shipping-fee', version: 1, status: 'published', ... }]
 ```
 
-## API surface
-
-| Export | Kind | Description |
-|---|---|---|
-| `EvaluationContext` | class | Core execution context |
-| `ExecutionMeta` | type | Request metadata (requestId, tenantId, timestamp) |
-| `RuleStore` | type | Rule persistence contract |
-| `GraphStore` | type | Graph persistence contract |
-| `ExecutionStore` | type | Execution log persistence contract |
-| `PersistenceAdapter` | type | Bundles all stores |
-| `InMemoryRuleStore` | class | In-memory rule store for testing |
-| `InMemoryGraphStore` | class | In-memory graph store for testing |
-| `InMemoryExecutionStore` | class | In-memory execution store for testing |
-| `createInMemoryAdapter` | function | Creates a complete in-memory adapter |
-| `deepFreeze`, `cloneAndFreeze`, `safeClone` | function | Immutability utilities |
-| `sha256` | function | SHA-256 hashing |
-
-## Used by
-
-- `@run-iq/core` — evaluation pipeline context
-- `@run-iq/decision-graph` — DGContext extends EvaluationContext
-- `@run-iq/rule-registry` — rule lifecycle management
+`resolveRules` returns only published rules in force at the given date, sorted by priority. A rule is either `tenant-specific` or `shared` across tenants, and can carry an optional `country` and `region` that queries filter on. The in-memory store does not write audit events itself; `@run-iq/rule-registry` does that.
 
 ## License
 
-All rights reserved. See LICENSE for details.
-
----
-
-*Run-IQ implements the PPE specification.*
-*github.com/Run-IQ*
+Business Source License 1.1. Production use is allowed, except offering the package as a hosted or embedded service that competes with the licensor. It converts to Apache 2.0 on 2030-01-01. See [LICENSE](LICENSE).
