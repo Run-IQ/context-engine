@@ -64,7 +64,7 @@
     "url": "https://github.com/Run-IQ/context-engine/issues"
   },
   "author": "Abdou-Raouf ATARMLA",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },

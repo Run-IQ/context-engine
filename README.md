@@ -89,4 +89,4 @@ await rules.resolveRules({ tenantId: 'acme', effectiveDate: '2025-06-01' });
 
 ## License
 
-Business Source License 1.1. Production use is allowed, except offering the package as a hosted or embedded service that competes with the licensor. It converts to Apache 2.0 on 2030-01-01. See [LICENSE](LICENSE).
+MIT License. See [LICENSE](LICENSE).
