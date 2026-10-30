@@ -197,6 +197,34 @@ describe('InMemoryRuleStore — @run-iq/spec contract', () => {
     expect(conflicts).toEqual([]);
   });
 
+  it('fills the country column from dimensions.country when RuleInput.country is absent', async () => {
+    const store = new InMemoryRuleStore();
+    const saved = await saveAndPublish(
+      store,
+      makeInput({
+        id: 'dim-tg',
+        payload: JSON.stringify({ params: {}, dimensions: { country: 'TG' } }),
+      }),
+    );
+    expect(saved.country).toBe('TG');
+    const tg = await store.resolveRules({ tenantId: 'T1', country: 'TG' });
+    expect(tg.map((r) => r.id)).toEqual(['dim-tg']);
+    const sn = await store.resolveRules({ tenantId: 'T1', country: 'SN' });
+    expect(sn).toEqual([]);
+  });
+
+  it('detectConflicts compares the country taken from the candidate payload', async () => {
+    const store = new InMemoryRuleStore();
+    await saveAndPublish(store, makeInput({ id: 'c-pub', country: 'TG' }));
+    const conflicts = await store.detectConflicts(
+      makeInput({
+        id: 'c-cand',
+        payload: JSON.stringify({ params: { rate: 0.2 }, dimensions: { country: 'TG' } }),
+      }),
+    );
+    expect(conflicts.map((c) => c.existingRuleId)).toEqual(['c-pub']);
+  });
+
   it('a new version of the same rule is not a duplicate of it', async () => {
     const store = new InMemoryRuleStore();
     await saveAndPublish(store, makeInput({ id: 'same-rule', effectiveFrom: '2025-01-01' }));

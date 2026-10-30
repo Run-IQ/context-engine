@@ -40,7 +40,8 @@ export interface RuleListQuery {
  * from it: `id` (or a generated one), the store's `version`, `model` and the dates of this
  * input take precedence over the payload (`effectiveUntil` absent, `null` or `''` means no
  * end); `priority` and `tags` too when given. `country` goes into `dimensions.country` when
- * the payload has no country dimension, and must agree with it otherwise; `region` stays
+ * the payload has no country dimension, and must agree with it otherwise; without
+ * `country`, the stored `country` column is filled from `dimensions.country`. `region` stays
  * outside the definition. An invalid payload is refused with `ContextValidationError`.
  */
 export interface RuleInput {

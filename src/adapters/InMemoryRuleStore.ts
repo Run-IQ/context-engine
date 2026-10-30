@@ -18,7 +18,7 @@ import {
   RulePublishError,
 } from '../errors.js';
 import { sha256 } from '../utils.js';
-import { buildRuleDefinition, effectiveUntilOf } from './ruleDefinition.js';
+import { buildRuleDefinition, countryOf, effectiveUntilOf } from './ruleDefinition.js';
 
 // ─── Allowed transitions ──────────────────────────────────────────────────
 const ALLOWED_TRANSITIONS: Record<RuleStatus, RuleStatus[]> = {
@@ -265,7 +265,8 @@ export class InMemoryRuleStore implements RuleStore {
 
     // Only set optional properties if defined (exactOptionalPropertyTypes)
     const mutable = rule as unknown as Record<string, unknown>;
-    if (input.country !== undefined) mutable['country'] = input.country;
+    const country = countryOf(input, definition);
+    if (country !== undefined) mutable['country'] = country;
     if (input.region !== undefined) mutable['region'] = input.region;
     if (input.description !== undefined) mutable['description'] = input.description;
     if (input.source !== undefined) mutable['source'] = input.source;
@@ -440,12 +441,13 @@ export class InMemoryRuleStore implements RuleStore {
     );
     const candidateFingerprint = computeRuleFingerprint(candidateDefinition);
     const candidateUntil = effectiveUntilOf(candidate);
+    const candidateCountry = countryOf(candidate, candidateDefinition) ?? null;
 
     for (const existing of this.rules.values()) {
       if (existing.status !== 'published') continue;
       if (existing.tenantId !== candidate.tenantId) continue;
       if (existing.model !== candidate.model) continue;
-      if ((existing.country ?? null) !== (candidate.country ?? null)) continue;
+      if ((existing.country ?? null) !== candidateCountry) continue;
 
       if (
         !periodsOverlap(existing, {

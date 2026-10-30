@@ -23,6 +23,16 @@ export function effectiveUntilOf(input: RuleInput): string | null {
 }
 
 /**
+ * Country column of a rule: `RuleInput.country` when given, else the definition's
+ * `dimensions.country`, so the column and the definition agree.
+ */
+export function countryOf(input: RuleInput, definition: RuleDefinitionInput): string | undefined {
+  if (input.country !== undefined) return input.country;
+  const country = definition.dimensions?.['country'];
+  return typeof country === 'string' ? country : undefined;
+}
+
+/**
  * Builds the rule definition a store saves for `input` under `id` and `version`.
  *
  * - `input.payload` is parsed: it must be a JSON object.
