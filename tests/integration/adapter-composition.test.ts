@@ -36,7 +36,7 @@ describe('createInMemoryAdapter — full lifecycle', () => {
       tenantId: 'T1',
       scope: 'tenant-specific',
       effectiveFrom: '2025-01-01',
-      payload: '{}',
+      payload: '{"params":{}}',
       createdBy: 'test-user',
     };
     const saved = await adapter.rules!.saveRule(ruleInput);

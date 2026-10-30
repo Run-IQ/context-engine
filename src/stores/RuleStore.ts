@@ -34,6 +34,14 @@ export interface RuleListQuery {
 }
 
 // ─── RuleInput — creation/modification ───────────────────────────────────
+/**
+ * Input of `saveRule`. `payload` is a JSON object holding the rule definition
+ * (`@run-iq/spec` `RuleDefinition`; `params` is required). The store builds the definition
+ * from it: `id` (or a generated one), the store's `version`, `model` and the dates of this
+ * input take precedence over the payload; `priority` and `tags` too when given. `country`
+ * goes into `dimensions.country` when the payload has no country dimension; `region` stays
+ * outside the definition. An invalid payload is refused with `ContextValidationError`.
+ */
 export interface RuleInput {
   readonly id?: string;
   readonly model: string;
@@ -53,6 +61,13 @@ export interface RuleInput {
 }
 
 // ─── SerializedRule — full storage ───────────────────────────────────────
+/**
+ * A stored rule version. `payload` is the canonical `RuleDefinition`
+ * (`canonicalize(normalizeRuleDefinition(definition))` from `@run-iq/spec`, dates in full UTC
+ * ISO) and `checksum` its sha256 hex, as `toStoredPayload` returns them: `fromStoredRecord`
+ * rebuilds the executable rule from it. The other columns keep the `RuleInput` values as
+ * received (dates as `YYYY-MM-DD`, compared as strings by the store).
+ */
 export interface SerializedRule {
   readonly id: string;
   readonly version: number;
@@ -129,11 +144,13 @@ export interface RuleAuditEvent {
 }
 
 // ─── RuleConflict — overlap detection ──────────────────────────────────
+/**
+ * `duplicate_checksum`: the candidate has the same content as a published rule, compared with
+ * `computeRuleFingerprint` of `@run-iq/spec` (the definition without `id`, `version`,
+ * `effectiveFrom` and `effectiveUntil`), not with the checksum.
+ */
 export type RuleConflictType =
-  | 'period_overlap'
-  | 'same_priority'
-  | 'effective_date_gap'
-  | 'duplicate_checksum';
+  'period_overlap' | 'same_priority' | 'effective_date_gap' | 'duplicate_checksum';
 
 export interface RuleConflict {
   readonly existingRuleId: string;

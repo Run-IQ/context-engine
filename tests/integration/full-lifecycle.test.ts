@@ -17,7 +17,7 @@ describe('Full execution lifecycle — simulates a DG execution', () => {
       effectiveFrom: '2025-01-01',
       tags: ['fiscal', 'irpp'],
       createdBy: 'test-user',
-      payload: JSON.stringify({ brackets: [{ from: 0, to: 900000, rate: 0 }] }),
+      payload: JSON.stringify({ params: { brackets: [{ from: 0, to: 900000, rate: 0 }] } }),
     });
     await adapter.rules!.updateRuleStatus(irppSaved.id, irppSaved.version, 'review', 'test-user');
     await adapter.rules!.publishRule(irppSaved.id, irppSaved.version, 'test-user');
@@ -30,7 +30,7 @@ describe('Full execution lifecycle — simulates a DG execution', () => {
       effectiveFrom: '2025-01-01',
       tags: ['fiscal', 'tva'],
       createdBy: 'test-user',
-      payload: JSON.stringify({ rate: 0.18 }),
+      payload: JSON.stringify({ params: { rate: 0.18 } }),
     });
     await adapter.rules!.updateRuleStatus(tvaSaved.id, tvaSaved.version, 'review', 'test-user');
     await adapter.rules!.publishRule(tvaSaved.id, tvaSaved.version, 'test-user');

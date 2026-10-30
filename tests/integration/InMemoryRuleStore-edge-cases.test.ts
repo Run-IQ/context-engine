@@ -10,7 +10,7 @@ const makeInput = (overrides: Partial<RuleInput> = {}): RuleInput => ({
   tenantId: 'T1',
   scope: 'tenant-specific',
   effectiveFrom: '2025-01-01',
-  payload: JSON.stringify({ country: 'TG' }),
+  payload: JSON.stringify({ params: { country: 'TG' } }),
   createdBy: 'test-user',
   ...overrides,
 });
@@ -42,15 +42,25 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
     // Use different models to avoid auto-deprecation of overlapping published rules
     await saveAndPublish(
       store,
-      makeInput({ id: 'r1', model: 'MODEL_A', tags: ['tax', 'fiscal'], payload: '{"r":1}' }),
+      makeInput({
+        id: 'r1',
+        model: 'MODEL_A',
+        tags: ['tax', 'fiscal'],
+        payload: '{"params":{"r":1}}',
+      }),
     );
     await saveAndPublish(
       store,
-      makeInput({ id: 'r2', model: 'MODEL_B', tags: ['payroll'], payload: '{"r":2}' }),
+      makeInput({ id: 'r2', model: 'MODEL_B', tags: ['payroll'], payload: '{"params":{"r":2}}' }),
     );
     await saveAndPublish(
       store,
-      makeInput({ id: 'r3', model: 'MODEL_C', tags: ['fiscal', 'report'], payload: '{"r":3}' }),
+      makeInput({
+        id: 'r3',
+        model: 'MODEL_C',
+        tags: ['fiscal', 'report'],
+        payload: '{"params":{"r":3}}',
+      }),
     );
 
     const results = await store.resolveRules({ tenantId: 'T1', tags: ['payroll'] });
@@ -118,9 +128,12 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
     await saveAndPublish(store, makeInput({ id: 'r-tg', country: 'TG' }));
     await saveAndPublish(
       store,
-      makeInput({ id: 'r-sn', country: 'SN', payload: JSON.stringify({ x: 1 }) }),
+      makeInput({ id: 'r-sn', country: 'SN', payload: JSON.stringify({ params: { x: 1 } }) }),
     );
-    await saveAndPublish(store, makeInput({ id: 'r-none', payload: JSON.stringify({ y: 2 }) }));
+    await saveAndPublish(
+      store,
+      makeInput({ id: 'r-none', payload: JSON.stringify({ params: { y: 2 } }) }),
+    );
 
     const tgRules = await store.resolveRules({ tenantId: 'T1', country: 'TG' });
     // r-tg matches (country=TG), r-none matches (no country filter on rule), r-sn excluded
@@ -155,14 +168,14 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
   // ─── Multi-version rules ──────────────────────────────────────────────────
 
   it('saveRule auto-increments version when same id is given', async () => {
-    const v1 = await store.saveRule(makeInput({ id: 'mv-rule', payload: '{"v":1}' }));
+    const v1 = await store.saveRule(makeInput({ id: 'mv-rule', payload: '{"params":{"v":1}}' }));
     expect(v1.version).toBe(1);
     expect(v1.status).toBe('draft');
 
-    const v2 = await store.saveRule(makeInput({ id: 'mv-rule', payload: '{"v":2}' }));
+    const v2 = await store.saveRule(makeInput({ id: 'mv-rule', payload: '{"params":{"v":2}}' }));
     expect(v2.version).toBe(2);
 
-    const v3 = await store.saveRule(makeInput({ id: 'mv-rule', payload: '{"v":3}' }));
+    const v3 = await store.saveRule(makeInput({ id: 'mv-rule', payload: '{"params":{"v":3}}' }));
     expect(v3.version).toBe(3);
 
     // getRule without version returns latest
@@ -235,7 +248,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
             id: `rule-t${t}-r${r}`,
             tenantId: `T${t}`,
             model: `MODEL_${r}`,
-            payload: JSON.stringify({ t, r }),
+            payload: JSON.stringify({ params: { t, r } }),
           }),
         );
       }
@@ -376,12 +389,17 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
 
   it('rollbackRule: restores target version and deprecates current', async () => {
     // Publish v1
-    const v1 = await saveAndPublish(store, makeInput({ id: 'rb-rule', payload: '{"v":1}' }));
+    const v1 = await saveAndPublish(
+      store,
+      makeInput({ id: 'rb-rule', payload: '{"params":{"v":1}}' }),
+    );
 
     // Deprecate v1 manually, then publish v2
     await store.updateRuleStatus(v1.id, v1.version, 'deprecated', 'test-user');
 
-    const v2saved = await store.saveRule(makeInput({ id: 'rb-rule', payload: '{"v":2}' }));
+    const v2saved = await store.saveRule(
+      makeInput({ id: 'rb-rule', payload: '{"params":{"v":2}}' }),
+    );
     await store.updateRuleStatus(v2saved.id, v2saved.version, 'review', 'test-user');
     const { published: v2 } = await store.publishRule(v2saved.id, v2saved.version, 'test-user');
 
@@ -419,7 +437,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         effectiveFrom: '2025-01-01',
         effectiveUntil: '2025-12-31',
         priority: 10,
-        payload: '{"a":1}',
+        payload: '{"params":{"a":1}}',
       }),
     );
 
@@ -427,7 +445,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
       effectiveFrom: '2025-06-01',
       effectiveUntil: '2026-06-30',
       priority: 20,
-      payload: '{"b":2}',
+      payload: '{"params":{"b":2}}',
     });
 
     const conflicts = await store.detectConflicts(candidate);
@@ -443,14 +461,14 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         id: 'noconf',
         effectiveFrom: '2025-01-01',
         effectiveUntil: '2025-06-30',
-        payload: '{"x":1}',
+        payload: '{"params":{"x":1}}',
       }),
     );
 
     const candidate = makeInput({
       effectiveFrom: '2025-07-01',
       effectiveUntil: '2025-12-31',
-      payload: '{"y":2}',
+      payload: '{"params":{"y":2}}',
     });
 
     const conflicts = await store.detectConflicts(candidate);
@@ -458,7 +476,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
   });
 
   it('detectConflicts: duplicate_checksum for identical payloads', async () => {
-    const sharedPayload = JSON.stringify({ rate: 0.18, base: 'revenue' });
+    const sharedPayload = JSON.stringify({ params: { rate: 0.18, base: 'revenue' } });
     await saveAndPublish(
       store,
       makeInput({
@@ -483,9 +501,9 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
   // ─── getRuleHistory ───────────────────────────────────────────────────────
 
   it('getRuleHistory: returns all versions ordered chronologically', async () => {
-    await store.saveRule(makeInput({ id: 'hist-rule', payload: '{"v":1}' }));
-    await store.saveRule(makeInput({ id: 'hist-rule', payload: '{"v":2}' }));
-    await store.saveRule(makeInput({ id: 'hist-rule', payload: '{"v":3}' }));
+    await store.saveRule(makeInput({ id: 'hist-rule', payload: '{"params":{"v":1}}' }));
+    await store.saveRule(makeInput({ id: 'hist-rule', payload: '{"params":{"v":2}}' }));
+    await store.saveRule(makeInput({ id: 'hist-rule', payload: '{"params":{"v":3}}' }));
 
     const history = await store.getRuleHistory('hist-rule');
     expect(history).toHaveLength(3);
@@ -503,7 +521,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         id: 'date-a',
         effectiveFrom: '2025-01-01',
         effectiveUntil: '2025-06-30',
-        payload: '{"a":1}',
+        payload: '{"params":{"a":1}}',
       }),
     );
     await saveAndPublish(
@@ -512,7 +530,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         id: 'date-b',
         effectiveFrom: '2025-04-01',
         effectiveUntil: '2025-12-31',
-        payload: '{"b":2}',
+        payload: '{"params":{"b":2}}',
       }),
     );
 
@@ -535,7 +553,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         scope: 'shared',
         region: 'UEMOA',
         model: 'SHARED_MODEL',
-        payload: '{"shared":true}',
+        payload: '{"params":{"shared":true}}',
       }),
     );
     await saveAndPublish(
@@ -544,7 +562,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         id: 'tenant-rule',
         scope: 'tenant-specific',
         model: 'TENANT_MODEL',
-        payload: '{"tenant":true}',
+        payload: '{"params":{"tenant":true}}',
       }),
     );
 
@@ -566,7 +584,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         scope: 'shared',
         region: 'UEMOA',
         model: 'UEMOA_MODEL',
-        payload: '{"r":"uemoa"}',
+        payload: '{"params":{"r":"uemoa"}}',
       }),
     );
     await saveAndPublish(
@@ -576,7 +594,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         scope: 'shared',
         region: 'OHADA',
         model: 'OHADA_MODEL',
-        payload: '{"r":"ohada"}',
+        payload: '{"params":{"r":"ohada"}}',
       }),
     );
 
@@ -597,7 +615,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         scope: 'shared',
         region: 'WEST_AFRICA',
         model: 'FLAT_RATE',
-        payload: '{"s":1}',
+        payload: '{"params":{"s":1}}',
       }),
     );
     await saveAndPublish(
@@ -607,7 +625,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         scope: 'shared',
         region: 'WEST_AFRICA',
         model: 'BRACKET',
-        payload: '{"s":2}',
+        payload: '{"params":{"s":2}}',
       }),
     );
     await saveAndPublish(
@@ -617,7 +635,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         scope: 'shared',
         region: 'EAST_AFRICA',
         model: 'THRESHOLD',
-        payload: '{"s":3}',
+        payload: '{"params":{"s":3}}',
       }),
     );
     // tenant-specific rule should not appear
@@ -627,7 +645,7 @@ describe('InMemoryRuleStore — edge cases (V2)', () => {
         id: 'private-1',
         scope: 'tenant-specific',
         model: 'COMPOSITE',
-        payload: '{"p":1}',
+        payload: '{"params":{"p":1}}',
       }),
     );
 

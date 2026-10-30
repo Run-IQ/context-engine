@@ -9,8 +9,16 @@ import type {
   RuleAuditEvent,
   RuleConflict,
 } from '../stores/RuleStore.js';
-import { RuleNotFoundError, RuleTransitionError, RulePublishError } from '../errors.js';
+import { computeRuleFingerprint, SpecError, toStoredPayload } from '@run-iq/spec';
+import type { RuleDefinitionInput } from '@run-iq/spec';
+import {
+  ContextValidationError,
+  RuleNotFoundError,
+  RuleTransitionError,
+  RulePublishError,
+} from '../errors.js';
 import { sha256 } from '../utils.js';
+import { buildRuleDefinition } from './ruleDefinition.js';
 
 // ─── Allowed transitions ──────────────────────────────────────────────────
 const ALLOWED_TRANSITIONS: Record<RuleStatus, RuleStatus[]> = {
@@ -210,10 +218,31 @@ export class InMemoryRuleStore implements RuleStore {
 
   // ─── Write ───────────────────────────────────────────────────────────
 
+  private nextVersion(id: string): number {
+    const existing = [...this.rules.values()].filter((r) => r.id === id);
+    return existing.length > 0 ? Math.max(...existing.map((r) => r.version)) + 1 : 1;
+  }
+
+  /**
+   * Saves a new version. The stored `payload` is the canonical `RuleDefinition` built by
+   * `buildRuleDefinition` (store-generated `id` and `version` included) and `checksum` its
+   * sha256, both from `toStoredPayload`. The columns keep the `RuleInput` values as received
+   * (`YYYY-MM-DD` dates). Throws `ContextValidationError` on an invalid payload.
+   */
   async saveRule(input: RuleInput): Promise<SerializedRule> {
     const id = input.id ?? generateId();
-    const existing = [...this.rules.values()].filter((r) => r.id === id);
-    const version = existing.length > 0 ? Math.max(...existing.map((r) => r.version)) + 1 : 1;
+    const version = this.nextVersion(id);
+    const definition = buildRuleDefinition(input, id, version);
+    let stored: { payload: string; checksum: string };
+    try {
+      stored = toStoredPayload(definition);
+    } catch (error) {
+      if (error instanceof SpecError) {
+        throw new ContextValidationError(`Rule ${id}@${version}: ${error.message}`);
+      }
+      throw error;
+    }
+    const tags = definition.tags;
     const now = new Date().toISOString();
 
     const rule: SerializedRule = {
@@ -225,10 +254,10 @@ export class InMemoryRuleStore implements RuleStore {
       status: 'draft',
       effectiveFrom: input.effectiveFrom,
       effectiveUntil: input.effectiveUntil ?? null,
-      priority: input.priority ?? 0,
-      tags: input.tags ? [...input.tags] : [],
-      checksum: sha256(input.payload),
-      payload: input.payload,
+      priority: definition.priority,
+      tags: tags ? [...tags] : [],
+      checksum: stored.checksum,
+      payload: stored.payload,
       createdBy: input.createdBy,
       createdAt: now,
       updatedAt: now,
@@ -394,8 +423,17 @@ export class InMemoryRuleStore implements RuleStore {
 
   // ─── Conflicts ──────────────────────────────────────────────────────
 
+  /**
+   * `duplicate_checksum` compares content fingerprints (`computeRuleFingerprint`: the
+   * definition without `id`, `version` and dates), the candidate's definition being built as
+   * `saveRule` builds it. Throws `ContextValidationError` on an invalid candidate payload.
+   */
   async detectConflicts(candidate: RuleInput): Promise<RuleConflict[]> {
     const conflicts: RuleConflict[] = [];
+    const candidateId = candidate.id ?? '(new rule)';
+    const candidateFingerprint = computeRuleFingerprint(
+      buildRuleDefinition(candidate, candidateId, this.nextVersion(candidateId)),
+    );
 
     for (const existing of this.rules.values()) {
       if (existing.status !== 'published') continue;
@@ -433,13 +471,14 @@ export class InMemoryRuleStore implements RuleStore {
         return c;
       };
 
-      // Exact duplicate
-      if (sha256(existing.payload) === sha256(candidate.payload)) {
+      // Same content under another id, version or window
+      const existingDefinition = JSON.parse(existing.payload) as RuleDefinitionInput;
+      if (computeRuleFingerprint(existingDefinition) === candidateFingerprint) {
         conflicts.push(
           makeConflict(
             'duplicate_checksum',
             'critical',
-            `Identical payload detected — possible duplicate of rule "${existing.id}" v${existing.version}`,
+            `Identical rule content detected — possible duplicate of rule "${existing.id}" v${existing.version}`,
           ),
         );
         continue;

@@ -7,7 +7,7 @@ const makeInput = (overrides: Partial<RuleInput> = {}): RuleInput => ({
   tenantId: 'T1',
   scope: 'tenant-specific',
   effectiveFrom: '2025-01-01',
-  payload: JSON.stringify({ country: 'TG' }),
+  payload: JSON.stringify({ params: { country: 'TG' } }),
   createdBy: 'test-user',
   ...overrides,
 });
@@ -37,7 +37,13 @@ describe('InMemoryRuleStore', () => {
     expect(result!.scope).toBe(input.scope);
     expect(result!.status).toBe('draft');
     expect(result!.effectiveFrom).toBe(input.effectiveFrom);
-    expect(result!.payload).toBe(input.payload);
+    // The payload is stored as the canonical definition built from the input
+    expect(JSON.parse(result!.payload)).toMatchObject({
+      id: 'rule-1',
+      version: 1,
+      model: input.model,
+      params: { country: 'TG' },
+    });
     expect(result!.createdBy).toBe(input.createdBy);
   });
 

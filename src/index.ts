@@ -66,6 +66,9 @@ export {
   getNestedValue,
 } from './utils.js';
 
+// Canonical stored form of a rule (@run-iq/spec)
+export { fromStoredRecord, toStoredPayload } from '@run-iq/spec';
+
 // InMemory adapters
 export {
   InMemoryGraphStore,
