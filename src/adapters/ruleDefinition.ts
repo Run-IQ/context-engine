@@ -33,20 +33,21 @@ export function countryOf(input: RuleInput, definition: RuleDefinitionInput): st
 }
 
 /**
- * Builds the rule definition a store saves for `input` under `id` and `version`.
+ * The rule definition a store saves for `input` under `id` and `version`, without validating it.
  *
  * - `input.payload` is parsed: it must be a JSON object.
  * - `id`, `version`, `model` and the dates (`effectiveFrom`, `effectiveUntil`; absent, `null` or
- *   `''` meaning no end) always come from the store and the `RuleInput`, never the payload; `priority` and `tags` come from the
- *   `RuleInput` when it gives them, else from the payload (`priority` defaults to 0).
+ *   `''` meaning no end) always come from the store and the `RuleInput`, never the payload;
+ *   `priority` and `tags` come from the `RuleInput` when it gives them, else from the payload
+ *   (`priority` defaults to 0).
  * - `input.country` is copied into `dimensions.country` when the payload has no country
- *   dimension; when both are set they must agree. `region` stays outside the definition.
+ *   dimension. A different `dimensions.country` is kept as is: `buildRuleDefinition` refuses it.
+ *   `region` stays outside the definition.
  *
- * Throws `ContextValidationError`, naming the rule, when the payload is not a JSON object,
- * when `input.country` and `dimensions.country` differ, or when the definition fails
- * `validateRuleDefinition`.
+ * Throws `ContextValidationError`, naming the rule, only when the payload is not a JSON object.
+ * Use it to check a candidate exactly as the store will see it (rule-registry does).
  */
-export function buildRuleDefinition(
+export function ruleDefinitionOf(
   input: RuleInput,
   id: string,
   version: number,
@@ -78,16 +79,34 @@ export function buildRuleDefinition(
   if (input.country !== undefined) {
     const dimensions = definition['dimensions'];
     if (dimensions == null) definition['dimensions'] = { country: input.country };
-    else if (isPlainObject(dimensions)) {
-      const country = dimensions['country'];
-      if (country == null) definition['dimensions'] = { ...dimensions, country: input.country };
-      else if (country !== input.country) {
-        throw new ContextValidationError(
-          `Rule ${name}: RuleInput.country "${input.country}" differs from the payload's ` +
-            `dimensions.country "${String(country)}"`,
-        );
-      }
+    else if (isPlainObject(dimensions) && dimensions['country'] == null) {
+      definition['dimensions'] = { ...dimensions, country: input.country };
     }
+  }
+  return definition as RuleDefinitionInput;
+}
+
+/**
+ * Builds the rule definition a store saves for `input` under `id` and `version`
+ * (`ruleDefinitionOf`), and checks it.
+ *
+ * Throws `ContextValidationError`, naming the rule, when the payload is not a JSON object,
+ * when `input.country` and `dimensions.country` differ, or when the definition fails
+ * `validateRuleDefinition`.
+ */
+export function buildRuleDefinition(
+  input: RuleInput,
+  id: string,
+  version: number,
+): RuleDefinitionInput {
+  const name = `${id}@${version}`;
+  const definition = ruleDefinitionOf(input, id, version);
+  const country = definition.dimensions?.['country'];
+  if (input.country !== undefined && country != null && country !== input.country) {
+    throw new ContextValidationError(
+      `Rule ${name}: RuleInput.country "${input.country}" differs from the payload's ` +
+        `dimensions.country "${String(country)}"`,
+    );
   }
 
   const { valid, errors } = validateRuleDefinition(definition);
@@ -99,5 +118,5 @@ export function buildRuleDefinition(
       `Rule ${name}: invalid definition: ${errors.join('; ')}${hint}`,
     );
   }
-  return definition as RuleDefinitionInput;
+  return definition;
 }

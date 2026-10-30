@@ -68,6 +68,7 @@ export {
 
 // Canonical stored form of a rule (@run-iq/spec)
 export { fromStoredRecord, toStoredPayload } from '@run-iq/spec';
+export { ruleDefinitionOf } from './adapters/ruleDefinition.js';
 
 // InMemory adapters
 export {
