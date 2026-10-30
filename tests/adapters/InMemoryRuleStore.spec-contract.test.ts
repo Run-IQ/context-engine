@@ -115,7 +115,6 @@ describe('InMemoryRuleStore — @run-iq/spec contract', () => {
     const explicit = await store.saveRule(
       makeInput({
         id: 'c2',
-        country: 'TG',
         payload: JSON.stringify({ params: {}, dimensions: { country: 'SN', sector: 'retail' } }),
       }),
     );
@@ -186,10 +185,97 @@ describe('InMemoryRuleStore — @run-iq/spec contract', () => {
 
   it('a different country is not a duplicate (it enters the definition)', async () => {
     const store = new InMemoryRuleStore();
-    await saveAndPublish(store, makeInput({ id: 'dup-a' }));
+    const existing = await saveAndPublish(store, makeInput({ id: 'dup-a' }));
+    const withCountry = await new InMemoryRuleStore().saveRule(
+      makeInput({ id: 'dup-b', country: 'TG' }),
+    );
+    expect(computeRuleFingerprint(JSON.parse(withCountry.payload))).not.toBe(
+      computeRuleFingerprint(JSON.parse(existing.payload)),
+    );
     const conflicts = await store.detectConflicts(makeInput({ id: 'dup-b', country: 'TG' }));
-    // The store filter already skips rules whose country column differs.
+    // The store filter also skips rules whose country column differs.
     expect(conflicts).toEqual([]);
+  });
+
+  it('a new version of the same rule is not a duplicate of it', async () => {
+    const store = new InMemoryRuleStore();
+    await saveAndPublish(store, makeInput({ id: 'same-rule', effectiveFrom: '2025-01-01' }));
+    const conflicts = await store.detectConflicts(
+      makeInput({ id: 'same-rule', effectiveFrom: '2025-06-01' }),
+    );
+    expect(conflicts.map((c) => c.conflictType)).toEqual(['same_priority']);
+  });
+
+  it('same_priority compares the priority of the built definition (payload priority)', async () => {
+    const store = new InMemoryRuleStore();
+    await saveAndPublish(store, makeInput({ id: 'p-a', priority: 7 }));
+    const conflicts = await store.detectConflicts(
+      makeInput({ id: 'p-b', payload: JSON.stringify({ params: { rate: 0.2 }, priority: 7 }) }),
+    );
+    expect(conflicts.map((c) => c.conflictType)).toEqual(['same_priority']);
+  });
+
+  it('a payload priority different from the existing one is not same_priority', async () => {
+    const store = new InMemoryRuleStore();
+    await saveAndPublish(store, makeInput({ id: 'p-a' }));
+    const conflicts = await store.detectConflicts(
+      makeInput({ id: 'p-b', payload: JSON.stringify({ params: { rate: 0.2 }, priority: 7 }) }),
+    );
+    expect(conflicts.map((c) => c.conflictType)).toEqual(['period_overlap']);
+  });
+
+  it("effectiveUntil '' means no end", async () => {
+    const store = new InMemoryRuleStore();
+    const saved = await store.saveRule(makeInput({ id: 'open', effectiveUntil: '' }));
+    expect(fromStoredRecord(saved).effectiveUntil).toBeNull();
+    expect(saved.effectiveUntil).toBeNull();
+
+    const fromPayload = await store.saveRule(
+      makeInput({
+        id: 'open-payload',
+        payload: JSON.stringify({ params: {}, effectiveUntil: '' }),
+      }),
+    );
+    expect(fromStoredRecord(fromPayload).effectiveUntil).toBeNull();
+  });
+
+  it("a candidate with effectiveUntil '' overlaps an open published rule", async () => {
+    const store = new InMemoryRuleStore();
+    await saveAndPublish(store, makeInput({ id: 'o-a', effectiveFrom: '2025-01-01' }));
+    const conflicts = await store.detectConflicts(
+      makeInput({ id: 'o-b', effectiveFrom: '2026-01-01', effectiveUntil: '' }),
+    );
+    expect(conflicts.map((c) => c.conflictType)).toEqual(['duplicate_checksum']);
+  });
+
+  it('refuses effectiveUntil equal to effectiveFrom and explains the half-open window', async () => {
+    const store = new InMemoryRuleStore();
+    const save = store.saveRule(
+      makeInput({ id: 'one-day', effectiveFrom: '2025-06-01', effectiveUntil: '2025-06-01' }),
+    );
+    await expect(save).rejects.toThrow(ContextValidationError);
+    await expect(save).rejects.toThrow(/a one-day rule ends the next day/);
+  });
+
+  it('refuses a RuleInput.country that differs from dimensions.country', async () => {
+    const store = new InMemoryRuleStore();
+    const save = store.saveRule(
+      makeInput({
+        id: 'c-mismatch',
+        country: 'TG',
+        payload: JSON.stringify({ params: {}, dimensions: { country: 'SN' } }),
+      }),
+    );
+    await expect(save).rejects.toThrow(ContextValidationError);
+    await expect(save).rejects.toThrow(/TG.*SN|SN.*TG/);
+    const agree = await store.saveRule(
+      makeInput({
+        id: 'c-agree',
+        country: 'TG',
+        payload: JSON.stringify({ params: {}, dimensions: { country: 'TG' } }),
+      }),
+    );
+    expect(fromStoredRecord(agree).dimensions).toEqual({ country: 'TG' });
   });
 
   it.each([

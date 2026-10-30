@@ -18,7 +18,7 @@ import {
   RulePublishError,
 } from '../errors.js';
 import { sha256 } from '../utils.js';
-import { buildRuleDefinition } from './ruleDefinition.js';
+import { buildRuleDefinition, effectiveUntilOf } from './ruleDefinition.js';
 
 // ─── Allowed transitions ──────────────────────────────────────────────────
 const ALLOWED_TRANSITIONS: Record<RuleStatus, RuleStatus[]> = {
@@ -253,7 +253,7 @@ export class InMemoryRuleStore implements RuleStore {
       scope: input.scope,
       status: 'draft',
       effectiveFrom: input.effectiveFrom,
-      effectiveUntil: input.effectiveUntil ?? null,
+      effectiveUntil: effectiveUntilOf(input),
       priority: definition.priority,
       tags: tags ? [...tags] : [],
       checksum: stored.checksum,
@@ -424,16 +424,22 @@ export class InMemoryRuleStore implements RuleStore {
   // ─── Conflicts ──────────────────────────────────────────────────────
 
   /**
-   * `duplicate_checksum` compares content fingerprints (`computeRuleFingerprint`: the
-   * definition without `id`, `version` and dates), the candidate's definition being built as
-   * `saveRule` builds it. Throws `ContextValidationError` on an invalid candidate payload.
+   * The candidate's definition is built as `saveRule` builds it. `duplicate_checksum` compares
+   * content fingerprints (`computeRuleFingerprint`: the definition without `id`, `version` and
+   * dates) and skips versions of the candidate's own rule, which a new version supersedes.
+   * `same_priority` compares the built definition's priority. Throws `ContextValidationError`
+   * on an invalid candidate payload.
    */
   async detectConflicts(candidate: RuleInput): Promise<RuleConflict[]> {
     const conflicts: RuleConflict[] = [];
     const candidateId = candidate.id ?? '(new rule)';
-    const candidateFingerprint = computeRuleFingerprint(
-      buildRuleDefinition(candidate, candidateId, this.nextVersion(candidateId)),
+    const candidateDefinition = buildRuleDefinition(
+      candidate,
+      candidateId,
+      this.nextVersion(candidateId),
     );
+    const candidateFingerprint = computeRuleFingerprint(candidateDefinition);
+    const candidateUntil = effectiveUntilOf(candidate);
 
     for (const existing of this.rules.values()) {
       if (existing.status !== 'published') continue;
@@ -444,13 +450,13 @@ export class InMemoryRuleStore implements RuleStore {
       if (
         !periodsOverlap(existing, {
           effectiveFrom: candidate.effectiveFrom,
-          effectiveUntil: candidate.effectiveUntil ?? null,
+          effectiveUntil: candidateUntil,
         })
       )
         continue;
 
       const overlapFrom = maxDate(existing.effectiveFrom, candidate.effectiveFrom);
-      const overlapUntil = minDate(existing.effectiveUntil, candidate.effectiveUntil);
+      const overlapUntil = minDate(existing.effectiveUntil, candidateUntil);
 
       const makeConflict = (
         conflictType: RuleConflict['conflictType'],
@@ -471,9 +477,12 @@ export class InMemoryRuleStore implements RuleStore {
         return c;
       };
 
-      // Same content under another id, version or window
+      // Same content under another id or window (a new version of the same rule supersedes it)
       const existingDefinition = JSON.parse(existing.payload) as RuleDefinitionInput;
-      if (computeRuleFingerprint(existingDefinition) === candidateFingerprint) {
+      if (
+        existing.id !== candidate.id &&
+        computeRuleFingerprint(existingDefinition) === candidateFingerprint
+      ) {
         conflicts.push(
           makeConflict(
             'duplicate_checksum',
@@ -485,7 +494,7 @@ export class InMemoryRuleStore implements RuleStore {
       }
 
       // Same priority → non-deterministic arbitration
-      if (existing.priority === (candidate.priority ?? 0)) {
+      if (existing.priority === candidateDefinition.priority) {
         conflicts.push(
           makeConflict(
             'same_priority',

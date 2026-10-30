@@ -14,17 +14,27 @@ function messageOf(error: unknown): string {
 }
 
 /**
+ * End of the window of a `RuleInput`: absent, `null` and `''` all mean no end (`null`).
+ * rule-registry's validator accepts `''` for an open-ended rule.
+ */
+export function effectiveUntilOf(input: RuleInput): string | null {
+  const until = input.effectiveUntil;
+  return until == null || until === '' ? null : until;
+}
+
+/**
  * Builds the rule definition a store saves for `input` under `id` and `version`.
  *
  * - `input.payload` is parsed: it must be a JSON object.
- * - `id`, `version`, `model` and the dates (`effectiveFrom`, `effectiveUntil`, absent meaning no
- *   end) always come from the store and the `RuleInput`; `priority` and `tags` come from the
+ * - `id`, `version`, `model` and the dates (`effectiveFrom`, `effectiveUntil`; absent, `null` or
+ *   `''` meaning no end) always come from the store and the `RuleInput`, never the payload; `priority` and `tags` come from the
  *   `RuleInput` when it gives them, else from the payload (`priority` defaults to 0).
  * - `input.country` is copied into `dimensions.country` when the payload has no country
- *   dimension. `region` stays outside the definition.
+ *   dimension; when both are set they must agree. `region` stays outside the definition.
  *
- * Throws `ContextValidationError`, naming the rule, when the payload is not a JSON object or
- * the definition fails `validateRuleDefinition`.
+ * Throws `ContextValidationError`, naming the rule, when the payload is not a JSON object,
+ * when `input.country` and `dimensions.country` differ, or when the definition fails
+ * `validateRuleDefinition`.
  */
 export function buildRuleDefinition(
   input: RuleInput,
@@ -50,7 +60,7 @@ export function buildRuleDefinition(
     version,
     model: input.model,
     effectiveFrom: input.effectiveFrom,
-    effectiveUntil: input.effectiveUntil ?? null,
+    effectiveUntil: effectiveUntilOf(input),
   };
   if (input.priority !== undefined) definition['priority'] = input.priority;
   else if (definition['priority'] == null) definition['priority'] = 0;
@@ -58,14 +68,26 @@ export function buildRuleDefinition(
   if (input.country !== undefined) {
     const dimensions = definition['dimensions'];
     if (dimensions == null) definition['dimensions'] = { country: input.country };
-    else if (isPlainObject(dimensions) && dimensions['country'] == null) {
-      definition['dimensions'] = { ...dimensions, country: input.country };
+    else if (isPlainObject(dimensions)) {
+      const country = dimensions['country'];
+      if (country == null) definition['dimensions'] = { ...dimensions, country: input.country };
+      else if (country !== input.country) {
+        throw new ContextValidationError(
+          `Rule ${name}: RuleInput.country "${input.country}" differs from the payload's ` +
+            `dimensions.country "${String(country)}"`,
+        );
+      }
     }
   }
 
   const { valid, errors } = validateRuleDefinition(definition);
   if (!valid) {
-    throw new ContextValidationError(`Rule ${name}: invalid definition: ${errors.join('; ')}`);
+    const hint = errors.some((e) => e.startsWith('effectiveUntil must be after effectiveFrom'))
+      ? ' (the window is [effectiveFrom, effectiveUntil): effectiveUntil is excluded, so a one-day rule ends the next day)'
+      : '';
+    throw new ContextValidationError(
+      `Rule ${name}: invalid definition: ${errors.join('; ')}${hint}`,
+    );
   }
   return definition as RuleDefinitionInput;
 }

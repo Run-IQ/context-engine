@@ -38,8 +38,9 @@ export interface RuleListQuery {
  * Input of `saveRule`. `payload` is a JSON object holding the rule definition
  * (`@run-iq/spec` `RuleDefinition`; `params` is required). The store builds the definition
  * from it: `id` (or a generated one), the store's `version`, `model` and the dates of this
- * input take precedence over the payload; `priority` and `tags` too when given. `country`
- * goes into `dimensions.country` when the payload has no country dimension; `region` stays
+ * input take precedence over the payload (`effectiveUntil` absent, `null` or `''` means no
+ * end); `priority` and `tags` too when given. `country` goes into `dimensions.country` when
+ * the payload has no country dimension, and must agree with it otherwise; `region` stays
  * outside the definition. An invalid payload is refused with `ContextValidationError`.
  */
 export interface RuleInput {
@@ -147,7 +148,8 @@ export interface RuleAuditEvent {
 /**
  * `duplicate_checksum`: the candidate has the same content as a published rule, compared with
  * `computeRuleFingerprint` of `@run-iq/spec` (the definition without `id`, `version`,
- * `effectiveFrom` and `effectiveUntil`), not with the checksum.
+ * `effectiveFrom` and `effectiveUntil`), not with the checksum. Versions of the candidate's
+ * own rule (same `id`) are not duplicates: a new version supersedes them.
  */
 export type RuleConflictType =
   'period_overlap' | 'same_priority' | 'effective_date_gap' | 'duplicate_checksum';
@@ -201,6 +203,7 @@ export interface RuleStore {
   getAuditTrail(ruleId: string): Promise<RuleAuditEvent[]>;
 
   // ─── Conflicts ───────────────────────────────────────────────────────
+  /** Throws `ContextValidationError` when the candidate's payload is invalid (as `saveRule`). */
   detectConflicts(candidate: RuleInput): Promise<RuleConflict[]>;
 
   // ─── Shared scopes ──────────────────────────────────────────────────
