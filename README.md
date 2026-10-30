@@ -7,10 +7,10 @@ It is used by [`@run-iq/dg`](https://github.com/Run-IQ/decision-graph), whose no
 ## Install
 
 ```bash
-npm install @run-iq/context-engine
+npm install @run-iq/context-engine@next
 ```
 
-Requires Node.js 20 or later.
+The 1.0 line, built on the rule contract of [`@run-iq/spec`](https://github.com/Run-IQ/spec), is published under the `next` tag. Requires Node.js 20 or later.
 
 ## Example
 
@@ -86,6 +86,25 @@ await rules.resolveRules({ tenantId: 'acme', effectiveDate: '2025-06-01' });
 ```
 
 `resolveRules` returns only published rules in force at the given date, sorted by priority. A rule is either `tenant-specific` or `shared` across tenants, and can carry an optional `country` and `region` that queries filter on. The in-memory store does not write audit events itself; `@run-iq/rule-registry` does that.
+
+## Stored rules
+
+`saveRule` stores the payload as the canonical rule definition of `@run-iq/spec`. The definition is the payload overridden by the rule's `id`, `version`, `model` and dates, and by `priority` and `tags` when the input gives them. `country` is copied into `dimensions.country`. The stored `checksum` is the sha256 of that payload, the value `@run-iq/core` checks. `fromStoredRecord`, re-exported from spec, turns a stored rule back into a rule core can evaluate:
+
+```ts
+import { fromStoredRecord } from '@run-iq/context-engine';
+
+const stored = await rules.getRule('shipping-fee', 1);
+const executable = fromStoredRecord(stored);
+executable.effectiveFrom; // Date 2025-01-01T00:00:00.000Z
+executable.checksum === stored.checksum; // true
+```
+
+- A payload that is not a JSON object, or that spec's `validateRuleDefinition` refuses (for example without `params`), throws `ContextValidationError`. So does a `country` that differs from the payload's `dimensions.country`.
+- `ruleDefinitionOf(input, id, version)` builds the definition without saving it.
+- The `effectiveFrom` and `effectiveUntil` columns keep the `YYYY-MM-DD` values you give; only the payload holds full ISO dates. `effectiveUntil` must be after `effectiveFrom`, because spec's validity window is `[effectiveFrom, effectiveUntil)`: a one-day rule ends the next day.
+- `resolveRules` still compares the columns with `effectiveUntil` inclusive. It moves to spec's window in a later release.
+- `detectConflicts(candidate)` reports a `duplicate_checksum` conflict when a published rule has the same content as the candidate. Content is compared with `computeRuleFingerprint` of spec, which leaves out `id`, `version` and dates, so the same rule under another id or period is caught however its JSON is written.
 
 ## License
 
