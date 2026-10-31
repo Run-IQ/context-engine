@@ -153,7 +153,10 @@ export interface RuleAuditEvent {
  * own rule (same `id`) are not duplicates: a new version supersedes them.
  */
 export type RuleConflictType =
-  'period_overlap' | 'same_priority' | 'effective_date_gap' | 'duplicate_checksum';
+  | 'period_overlap'
+  | 'same_priority'
+  | 'effective_date_gap'
+  | 'duplicate_checksum';
 
 export interface RuleConflict {
   readonly existingRuleId: string;
